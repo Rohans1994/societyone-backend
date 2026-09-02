@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
+// AMC & Assets management is an admin-only feature (see Layout.tsx nav).
+router.use('/api/assets', requireAuth, requireRole('SuperAdmin', 'WingAdmin'));
 
 // --- Assets ---
 router.get('/api/assets', async (req, res) => {

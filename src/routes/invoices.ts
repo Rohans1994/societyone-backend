@@ -1,7 +1,16 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// Residents view/pay their own invoices; admins manage all invoices.
+// NOTE: this currently only enforces "must be logged in" — it does not yet
+// restrict a resident to only their own invoices server-side (the frontend
+// filters client-side today). Recommended follow-up: scope GET results to
+// req.user.uid for the Resident role, similar to the societyId scoping done
+// in users.ts.
+router.use('/api/invoices', requireAuth);
 
 // --- Invoices ---
 router.get('/api/invoices', async (req, res) => {

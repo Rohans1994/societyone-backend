@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
+// Vendor Management is an admin-only feature (see Layout.tsx nav).
+router.use('/api/vendors', requireAuth, requireRole('SuperAdmin', 'WingAdmin'));
 
 // --- Vendors ---
 router.get('/api/vendors', async (req, res) => {

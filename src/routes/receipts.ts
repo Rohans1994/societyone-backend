@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// Residents view their own payment receipts; admins view all.
+// Same caveat as invoices.ts: enforces login, not yet per-resident row scoping.
+router.use('/api/receipts', requireAuth);
 
 // --- Receipts ---
 router.get('/api/receipts', async (req, res) => {

@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
+// Finance & Accounting is an admin-only feature (see Layout.tsx nav).
+router.use('/api/transactions', requireAuth, requireRole('SuperAdmin', 'WingAdmin'));
 
 // --- Transactions ---
 router.get('/api/transactions', async (req, res) => {

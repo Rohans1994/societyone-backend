@@ -24,6 +24,7 @@ import assetsRouter from './routes/assets.js';
 import amcRouter from './routes/amc.js';
 import configRouter from './routes/config.js';
 import storageRouter from './routes/storage.js';
+import adminMigrationRouter from './routes/adminMigration.js';
 
 dotenv.config();
 
@@ -70,6 +71,7 @@ app.use(assetsRouter);
 app.use(amcRouter);
 app.use(configRouter);
 app.use(storageRouter);
+app.use(adminMigrationRouter);
 
 // Initialize DB and bootstrap tables, then start listening.
 initializeDatabase()

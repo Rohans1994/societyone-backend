@@ -63,6 +63,16 @@ export async function initializeDatabase() {
       ALTER TABLE society_users ADD COLUMN IF NOT EXISTS admin_approved BOOLEAN DEFAULT TRUE;
       ALTER TABLE society_users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT TRUE;
       ALTER TABLE society_users ADD COLUMN IF NOT EXISTS verification_token TEXT;
+      -- Links this profile row to its Supabase Auth identity (auth.users.id).
+      -- Nullable during migration: existing rows have no auth_uid until they're
+      -- migrated into Supabase Auth (see POST /api/admin/migrate-users-to-auth).
+      ALTER TABLE society_users ADD COLUMN IF NOT EXISTS auth_uid TEXT;
+    `);
+    // Unique index so one Supabase Auth identity maps to exactly one profile row
+    // (partial index skips NULLs so unmigrated rows don't conflict with each other).
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS society_users_auth_uid_unique_idx
+        ON society_users (auth_uid) WHERE auth_uid IS NOT NULL;
     `);
 
     // Vendors

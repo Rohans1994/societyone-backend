@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// Residents raise/view tickets; admins manage all tickets in their society.
+router.use('/api/tickets', requireAuth);
 
 // --- Helpdesk Tickets ---
 router.get('/api/tickets', async (req, res) => {

@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// Community chat — any logged-in resident/admin in a society can participate.
+router.use('/api/fishbowl', requireAuth);
 
 // --- Fishbowl Messages ---
 router.get('/api/fishbowl', async (req, res) => {

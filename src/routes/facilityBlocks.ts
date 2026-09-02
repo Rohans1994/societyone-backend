@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
+// Scheduling facility maintenance/closures is an admin-only action.
+router.use('/api/facility-blocks', requireAuth, requireRole('SuperAdmin', 'WingAdmin'));
 
 // --- Facility Maintenance Blocks ---
 router.get('/api/facility-blocks', async (req, res) => {

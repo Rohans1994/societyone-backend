@@ -1,7 +1,15 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
+// AMC & Assets management is an admin-only feature (see Layout.tsx nav).
+// Scoped to this router's own path prefix — router.use() without a path
+// would match every request reaching this point in the app-level chain
+// (since these routers are mounted at "/"), incorrectly blocking unrelated
+// routes registered later, like the admin migration endpoint.
+router.use('/api/amc', requireAuth, requireRole('SuperAdmin', 'WingAdmin'));
 
 // --- AMC (Annual Maintenance Contracts) ---
 router.get('/api/amc', async (req, res) => {

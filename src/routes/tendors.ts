@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
+// Tendor Management is an admin-only feature (see Layout.tsx nav).
+router.use('/api/tendors', requireAuth, requireRole('SuperAdmin', 'WingAdmin'));
 
 // --- Tendors & Quotations ---
 router.get('/api/tendors', async (req, res) => {

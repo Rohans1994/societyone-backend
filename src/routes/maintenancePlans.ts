@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+
+// Maintenance plan / auto-billing setup is an admin-only action.
+router.use('/api/maintenance-plans', requireAuth, requireRole('SuperAdmin', 'WingAdmin'));
 
 // --- Maintenance Plans & Auto-Billing ---
 router.get('/api/maintenance-plans', async (req, res) => {

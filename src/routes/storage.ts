@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { getSupabaseUrl } from '../services/storage.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 
 // --- File Upload & Storage ---
-router.post('/api/upload', async (req, res) => {
+// Uploads (warranty PDFs, AMC contracts, tendor quotations) are admin-only actions.
+router.post('/api/upload', requireAuth, requireRole('SuperAdmin', 'WingAdmin'), async (req, res) => {
   const { bucket, filename, contentBase64, mimeType } = req.body;
   if (!bucket || !filename || !contentBase64) {
     return res.status(400).json({ error: 'Missing bucket, filename or contentBase64' });
@@ -71,7 +73,9 @@ router.post('/api/upload', async (req, res) => {
   }
 });
 
-router.get('/api/storage/:bucket/:filename', async (req, res) => {
+// Viewing/downloading a previously uploaded file just requires being logged in
+// (e.g. a resident viewing a notice attachment), not admin privileges.
+router.get('/api/storage/:bucket/:filename', requireAuth, async (req, res) => {
   const { bucket, filename } = req.params;
   try {
     const result = await pool.query(

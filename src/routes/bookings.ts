@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { parseSlotRange, parseTimeStringToMinutes, doTimeRangesOverlap } from '../utils/timeSlots.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// Residents book their own facility slots; admins manage all bookings.
+router.use('/api/bookings', requireAuth);
 
 // --- Facility Bookings ---
 router.get('/api/bookings', async (req, res) => {

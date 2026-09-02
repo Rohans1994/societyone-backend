@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// Residents view events; admins create/manage them.
+router.use('/api/events', requireAuth);
 
 // --- Events ---
 router.get('/api/events', async (req, res) => {

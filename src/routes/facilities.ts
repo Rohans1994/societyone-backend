@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// Residents browse facilities to book them; admins manage the facility list.
+router.use('/api/facilities', requireAuth);
 
 // --- Facilities / Amenities ---
 router.get('/api/facilities', async (req, res) => {
