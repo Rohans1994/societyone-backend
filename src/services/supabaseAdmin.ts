@@ -44,3 +44,39 @@ export async function verifySupabaseToken(token: string) {
   }
   return data.user;
 }
+
+/**
+ * Computes the dedicated Storage bucket name for a society: its stable id
+ * (which is already a safe identifier used everywhere else in the app),
+ * plus a slugified version of its display name for human readability, e.g.
+ * "soc-mtb32pfk" + "Arkade Earth" -> "soc-mtb32pfk-arkade-earth". Using the
+ * id as the primary component means the bucket name stays valid and stable
+ * even if the society is later renamed.
+ */
+export function computeSocietyBucketName(societyId: string, societyName: string): string {
+  const slug = (societyName || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const bucketName = slug ? `${societyId}-${slug}` : societyId;
+  // Supabase bucket ids must be reasonably short; truncate defensively.
+  return bucketName.slice(0, 63).replace(/-+$/g, '');
+}
+
+/**
+ * Creates the given society's dedicated Storage bucket if it doesn't already
+ * exist (idempotent — safe to call every time a society is created/backfilled).
+ * Contains tendor/, amc/, and assets/ folders (folders are just path prefixes
+ * within the bucket, created implicitly the first time a file is uploaded
+ * under that prefix — no separate folder-creation step is needed).
+ */
+export async function ensureSocietyBucket(societyId: string, societyName: string): Promise<string> {
+  const bucketName = computeSocietyBucketName(societyId, societyName);
+  const supabase = getSupabaseAdminClient();
+  const { error } = await supabase.storage.createBucket(bucketName, { public: false });
+  if (error && !/already exists/i.test(error.message)) {
+    throw error;
+  }
+  return bucketName;
+}

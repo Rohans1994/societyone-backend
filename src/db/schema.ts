@@ -34,6 +34,12 @@ export async function initializeDatabase() {
       ALTER TABLE society_societies ADD COLUMN IF NOT EXISTS phone TEXT;
       ALTER TABLE society_societies ADD COLUMN IF NOT EXISTS created_at TEXT;
       ALTER TABLE society_societies ADD COLUMN IF NOT EXISTS wings JSONB;
+      -- Name of this society's dedicated Supabase Storage bucket (e.g.
+      -- "soc-mtb32pfk-arkade-earth"), containing tendor/, amc/, and assets/
+      -- folders. Nullable: legacy societies created before this feature keep
+      -- using the old shared flat buckets until backfilled (see
+      -- POST /api/admin/backfill-society-buckets).
+      ALTER TABLE society_societies ADD COLUMN IF NOT EXISTS storage_bucket TEXT;
     `);
 
     // Users
