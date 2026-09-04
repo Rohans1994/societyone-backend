@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
 import { getSupabaseUrl } from './storage.js';
 
 // Server-side Supabase client using the SERVICE ROLE key. Never expose this
@@ -26,6 +27,16 @@ export function getSupabaseAdminClient(): SupabaseClient {
     auth: {
       autoRefreshToken: false,
       persistSession: false
+    },
+    // This app never uses Supabase Realtime (no .channel()/subscriptions
+    // anywhere) — only Auth and Storage. But supabase-js always constructs a
+    // RealtimeClient internally regardless, which on Node.js <22 (no global
+    // WebSocket) throws immediately unless a transport is explicitly given.
+    // Providing the `ws` package here satisfies that requirement without
+    // needing to upgrade Node system-wide (which could affect other apps on
+    // a shared instance).
+    realtime: {
+      transport: WebSocket as any
     }
   });
   return cachedClient;
