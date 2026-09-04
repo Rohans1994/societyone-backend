@@ -60,6 +60,34 @@ router.put('/api/vendors/:id', async (req, res) => {
   }
 });
 
+// Checks whether this vendor is referenced elsewhere before deletion.
+// AMC contracts only store vendor_name as plain text (no foreign key), and
+// quotations store both vendor_id and vendor_name — so both are checked.
+// Used by the frontend to show a warning in the delete confirmation dialog;
+// does not block deletion itself.
+router.get('/api/vendors/:id/usage', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const vendorRes = await pool.query('SELECT name FROM society_vendors WHERE id = $1', [id]);
+    if (vendorRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Vendor not found' });
+    }
+    const vendorName = vendorRes.rows[0].name;
+
+    const [amcRes, quotationRes] = await Promise.all([
+      pool.query('SELECT COUNT(*) FROM society_amc WHERE vendor_name = $1', [vendorName]),
+      pool.query('SELECT COUNT(*) FROM society_quotations WHERE vendor_id = $1 OR vendor_name = $2', [id, vendorName])
+    ]);
+
+    res.json({
+      amcCount: parseInt(amcRes.rows[0].count, 10),
+      quotationCount: parseInt(quotationRes.rows[0].count, 10)
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.delete('/api/vendors/:id', async (req, res) => {
   const { id } = req.params;
   try {

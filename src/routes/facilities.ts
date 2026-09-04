@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { requireAuth } from '../middleware/auth.js';
+import { deleteStorageFiles } from '../services/storageCleanup.js';
 
 const router = Router();
 
@@ -118,7 +119,17 @@ router.put('/api/facilities/:id', async (req, res) => {
 router.delete('/api/facilities/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    await pool.query('DELETE FROM society_facilities WHERE id = $1', [id]);
+    const result = await pool.query(
+      'DELETE FROM society_facilities WHERE id = $1 RETURNING image_url, images',
+      [id]
+    );
+    if (result.rows.length > 0) {
+      const { image_url, images } = result.rows[0];
+      const urls: string[] = [image_url, ...(Array.isArray(images) ? images : [])];
+      deleteStorageFiles(urls).catch((err) =>
+        console.warn('[Facilities] Storage cleanup failed for deleted amenity:', err)
+      );
+    }
     res.json({ success: true });
   } catch (err: any) {
     console.error('Error deleting facility:', err);

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { deleteStorageFiles } from '../services/storageCleanup.js';
 
 const router = Router();
 
@@ -77,6 +78,21 @@ router.put('/api/tendors/:id', async (req, res) => {
   try {
     await client.query('BEGIN');
     await client.query('UPDATE society_tendors SET name = $1, description = $2, society_id = COALESCE($3, society_id) WHERE id = $4', [name, description, societyId || null, id]);
+
+    // This always deletes and re-inserts every quotation row, even ones that
+    // are otherwise unchanged (their pdf_url is simply carried over as-is by
+    // the frontend when no new file was selected for that row). So we can't
+    // just delete every OLD pdf_url — that would break quotations whose file
+    // didn't change. Instead, diff old vs incoming urls and only clean up the
+    // ones that are actually being replaced or removed.
+    const oldQuotationsRes = await client.query('SELECT pdf_url FROM society_quotations WHERE tendor_id = $1', [id]);
+    const incomingUrls = new Set(
+      (Array.isArray(quotations) ? quotations : []).map((q: any) => q.pdfUrl).filter(Boolean)
+    );
+    const orphanedUrls = oldQuotationsRes.rows
+      .map((r) => r.pdf_url)
+      .filter((url) => url && !incomingUrls.has(url));
+
     await client.query('DELETE FROM society_quotations WHERE tendor_id = $1', [id]);
     if (quotations && Array.isArray(quotations)) {
       for (const q of quotations) {
@@ -87,6 +103,13 @@ router.put('/api/tendors/:id', async (req, res) => {
       }
     }
     await client.query('COMMIT');
+
+    if (orphanedUrls.length > 0) {
+      deleteStorageFiles(orphanedUrls).catch((err) =>
+        console.warn('[Tendors] Storage cleanup failed for replaced/removed quotation documents:', err)
+      );
+    }
+
     res.json({ success: true });
   } catch (err: any) {
     await client.query('ROLLBACK');
@@ -99,7 +122,15 @@ router.put('/api/tendors/:id', async (req, res) => {
 router.delete('/api/tendors/:id', async (req, res) => {
   const { id } = req.params;
   try {
+    // Quotations cascade-delete at the DB level (ON DELETE CASCADE), so their
+    // PDF urls must be read out BEFORE deleting the tendor — they're gone
+    // from the table immediately afterward.
+    const quotationsRes = await pool.query('SELECT pdf_url FROM society_quotations WHERE tendor_id = $1', [id]);
     await pool.query('DELETE FROM society_tendors WHERE id = $1', [id]);
+    const urls = quotationsRes.rows.map((r) => r.pdf_url);
+    deleteStorageFiles(urls).catch((err) =>
+      console.warn('[Tendors] Storage cleanup failed for deleted tendor quotations:', err)
+    );
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

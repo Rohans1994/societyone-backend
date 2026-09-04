@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { deleteStorageFiles } from '../services/storageCleanup.js';
 
 const router = Router();
 
@@ -74,7 +75,17 @@ router.put('/api/amc/:id', async (req, res) => {
 router.delete('/api/amc/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    await pool.query('DELETE FROM society_amc WHERE id = $1', [id]);
+    const result = await pool.query(
+      'DELETE FROM society_amc WHERE id = $1 RETURNING contract_pdf_url, contract_pdf_urls',
+      [id]
+    );
+    if (result.rows.length > 0) {
+      const { contract_pdf_url, contract_pdf_urls } = result.rows[0];
+      const urls: string[] = [contract_pdf_url, ...(Array.isArray(contract_pdf_urls) ? contract_pdf_urls : [])];
+      deleteStorageFiles(urls).catch((err) =>
+        console.warn('[AMC] Storage cleanup failed for deleted contract:', err)
+      );
+    }
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

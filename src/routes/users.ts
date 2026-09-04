@@ -4,6 +4,7 @@ import { pool } from '../db/pool.js';
 import { sendVerificationEmail } from '../services/email.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { getSupabaseAdminClient } from '../services/supabaseAdmin.js';
+import { deleteStorageFile } from '../services/storageCleanup.js';
 
 const router = Router();
 
@@ -302,7 +303,23 @@ router.delete('/api/users/:uid', requireAuth, requireRole('SuperAdmin', 'WingAdm
         return res.status(403).json({ error: 'You can only remove residents in your own society' });
       }
     }
-    await pool.query('DELETE FROM society_users WHERE uid = $1', [uid]);
+    const result = await pool.query('DELETE FROM society_users WHERE uid = $1 RETURNING avatar_url, auth_uid', [uid]);
+    if (result.rows.length > 0) {
+      const { avatar_url, auth_uid } = result.rows[0];
+      // No-ops for the common case (auto-generated ui-avatars.com URLs aren't
+      // ours to delete) — only removes anything if it's a real uploaded file.
+      deleteStorageFile(avatar_url).catch((err) =>
+        console.warn('[Users] Storage cleanup failed for deleted user avatar:', err)
+      );
+      // Also remove the corresponding Supabase Auth identity, so a deleted
+      // resident's login credential doesn't remain active/orphaned. Best-effort
+      // — auth_uid is null for any legacy row never migrated to Supabase Auth.
+      if (auth_uid) {
+        getSupabaseAdminClient().auth.admin.deleteUser(auth_uid).catch((err: any) =>
+          console.warn('[Users] Failed to delete Supabase Auth identity for deleted user:', err.message)
+        );
+      }
+    }
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

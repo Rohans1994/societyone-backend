@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { deleteStorageFiles } from '../services/storageCleanup.js';
 
 const router = Router();
 
@@ -67,7 +68,16 @@ router.put('/api/assets/:id', async (req, res) => {
 router.delete('/api/assets/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    await pool.query('DELETE FROM society_assets WHERE id = $1', [id]);
+    const result = await pool.query(
+      'DELETE FROM society_assets WHERE id = $1 RETURNING image_url, warranty_pdf_url',
+      [id]
+    );
+    if (result.rows.length > 0) {
+      const { image_url, warranty_pdf_url } = result.rows[0];
+      deleteStorageFiles([image_url, warranty_pdf_url]).catch((err) =>
+        console.warn('[Assets] Storage cleanup failed for deleted asset:', err)
+      );
+    }
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
