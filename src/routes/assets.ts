@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { pool } from '../db/pool.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { deleteStorageFiles } from '../services/storageCleanup.js';
@@ -49,6 +50,57 @@ router.post('/api/assets', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Bulk import assets from a CSV parsed client-side into an array of rows.
+// Warranty PDFs/images can't be attached via CSV (no binary file support) —
+// admins can upload those individually afterward via the normal edit flow.
+router.post('/api/assets/bulk', async (req, res) => {
+  const { assets, societyId: bodySocietyId } = req.body;
+  if (!Array.isArray(assets) || assets.length === 0) {
+    return res.status(400).json({ error: 'assets must be a non-empty array' });
+  }
+  const societyId = bodySocietyId || req.user?.societyId || 'soc-mtb32pfk';
+
+  const results: { row: number; name: string; status: 'imported' | 'failed'; reason?: string }[] = [];
+  for (let i = 0; i < assets.length; i++) {
+    const row = assets[i] || {};
+    const rowNum = i + 1;
+    const name = (row.name || '').trim();
+    if (!name) {
+      results.push({ row: rowNum, name: '(missing)', status: 'failed', reason: 'name is required' });
+      continue;
+    }
+    try {
+      const id = `ast-${crypto.randomBytes(6).toString('hex')}`;
+      await pool.query(
+        'INSERT INTO society_assets (id, name, category, location, purchase_date, model_no, status, description, has_warranty, society_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+        [
+          id,
+          name,
+          (row.category || 'General').trim(),
+          (row.location || '').trim(),
+          (row.purchaseDate || '').trim() || null,
+          (row.modelNo || '').trim() || null,
+          (row.status || 'Operational').trim(),
+          (row.description || '').trim() || null,
+          String(row.hasWarranty).toLowerCase() === 'true' || row.hasWarranty === true,
+          societyId
+        ]
+      );
+      results.push({ row: rowNum, name, status: 'imported' });
+    } catch (err: any) {
+      results.push({ row: rowNum, name, status: 'failed', reason: err.message });
+    }
+  }
+
+  res.json({
+    success: true,
+    total: assets.length,
+    imported: results.filter((r) => r.status === 'imported').length,
+    failed: results.filter((r) => r.status === 'failed').length,
+    results
+  });
 });
 
 router.put('/api/assets/:id', async (req, res) => {

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { pool } from '../db/pool.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 
@@ -44,6 +45,53 @@ router.post('/api/vendors', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Bulk import vendors from a CSV parsed client-side into an array of rows.
+router.post('/api/vendors/bulk', async (req, res) => {
+  const { vendors, societyId: bodySocietyId } = req.body;
+  if (!Array.isArray(vendors) || vendors.length === 0) {
+    return res.status(400).json({ error: 'vendors must be a non-empty array' });
+  }
+  const societyId = bodySocietyId || req.user?.societyId || 'soc-mtb32pfk';
+
+  const results: { row: number; name: string; status: 'imported' | 'failed'; reason?: string }[] = [];
+  for (let i = 0; i < vendors.length; i++) {
+    const row = vendors[i] || {};
+    const rowNum = i + 1;
+    const name = (row.name || '').trim();
+    if (!name) {
+      results.push({ row: rowNum, name: '(missing)', status: 'failed', reason: 'name is required' });
+      continue;
+    }
+    try {
+      const id = `v-${crypto.randomBytes(6).toString('hex')}`;
+      await pool.query(
+        'INSERT INTO society_vendors (id, name, service_category, contact_person, phone, email, status, society_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [
+          id,
+          name,
+          (row.serviceCategory || 'Plumbing').trim(),
+          (row.contactPerson || '').trim() || null,
+          (row.phone || '').trim() || null,
+          (row.email || '').trim() || null,
+          (row.status || 'Active').trim(),
+          societyId
+        ]
+      );
+      results.push({ row: rowNum, name, status: 'imported' });
+    } catch (err: any) {
+      results.push({ row: rowNum, name, status: 'failed', reason: err.message });
+    }
+  }
+
+  res.json({
+    success: true,
+    total: vendors.length,
+    imported: results.filter((r) => r.status === 'imported').length,
+    failed: results.filter((r) => r.status === 'failed').length,
+    results
+  });
 });
 
 router.put('/api/vendors/:id', async (req, res) => {

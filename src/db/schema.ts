@@ -297,8 +297,8 @@ export async function initializeDatabase() {
         name TEXT NOT NULL,
         description TEXT,
         capacity INT DEFAULT 10,
-        open_time TEXT NOT NULL,
-        close_time TEXT NOT NULL,
+        open_time TEXT,
+        close_time TEXT,
         image_url TEXT,
         images JSONB DEFAULT '[]'::jsonb,
         can_book BOOLEAN DEFAULT TRUE,
@@ -315,6 +315,18 @@ export async function initializeDatabase() {
     await client.query(`ALTER TABLE society_facilities ADD COLUMN IF NOT EXISTS price INT DEFAULT 0;`);
     await client.query(`ALTER TABLE society_facilities ADD COLUMN IF NOT EXISTS rules TEXT;`);
     await client.query(`ALTER TABLE society_facilities ADD COLUMN IF NOT EXISTS society_id TEXT;`);
+    // Payment collection details — all optional, only relevant when requires_payment is true
+    await client.query(`ALTER TABLE society_facilities ADD COLUMN IF NOT EXISTS payment_qr_url TEXT;`);
+    await client.query(`ALTER TABLE society_facilities ADD COLUMN IF NOT EXISTS upi_id TEXT;`);
+    await client.query(`ALTER TABLE society_facilities ADD COLUMN IF NOT EXISTS bank_account_number TEXT;`);
+    await client.query(`ALTER TABLE society_facilities ADD COLUMN IF NOT EXISTS bank_ifsc_code TEXT;`);
+    // Up to 4 admin-defined booking slots (each { startTime, endTime }) replace the
+    // single open_time/close_time range. Legacy rows keep their old open_time/close_time
+    // values (now nullable) as a fallback until they're next saved through the app,
+    // at which point they get migrated into a single-entry slots array (see facilities.ts GET).
+    await client.query(`ALTER TABLE society_facilities ADD COLUMN IF NOT EXISTS slots JSONB;`);
+    await client.query(`ALTER TABLE society_facilities ALTER COLUMN open_time DROP NOT NULL;`);
+    await client.query(`ALTER TABLE society_facilities ALTER COLUMN close_time DROP NOT NULL;`);
 
     // Bookings
     await client.query(`

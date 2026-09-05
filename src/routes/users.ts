@@ -5,6 +5,7 @@ import { sendVerificationEmail } from '../services/email.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { getSupabaseAdminClient } from '../services/supabaseAdmin.js';
 import { deleteStorageFile } from '../services/storageCleanup.js';
+import { uploadFileToStorage } from '../services/storageUpload.js';
 
 const router = Router();
 
@@ -14,6 +15,63 @@ const router = Router();
 // (email verification + admin approval) login checks.
 router.get('/api/users/me', requireAuth, (req, res) => {
   res.json(req.user);
+});
+
+// Self-service profile update — any authenticated role can update their own
+// name. Deliberately does NOT accept wing/apartmentNo/email/role/societyId:
+// wing/apartment changes stay admin-only (they're tied to the Level 2 flat-
+// allocation approval this app already enforces at signup), and identity/
+// role fields have their own dedicated, admin-gated routes elsewhere.
+router.put('/api/users/me', requireAuth, async (req, res) => {
+  const { name } = req.body;
+  const trimmedName = (name || '').trim();
+  if (!trimmedName) {
+    return res.status(400).json({ error: 'name is required' });
+  }
+  try {
+    await pool.query('UPDATE society_users SET name = $1 WHERE uid = $2', [trimmedName, req.user!.uid]);
+    res.json({ success: true, name: trimmedName });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Self-service avatar upload — any authenticated role can upload their own
+// avatar. Narrowly scoped: unlike POST /api/upload (admin-only, arbitrary
+// bucket/filename), this always writes to a fixed, predictable path
+// (avatars/<own-uid>.<ext>) inside the caller's own society bucket, so a
+// resident can never write anywhere else. Cleans up the previous avatar file
+// (best-effort) before saving the new one.
+router.post('/api/users/me/avatar', requireAuth, async (req, res) => {
+  const { contentBase64, mimeType, fileExtension } = req.body;
+  if (!contentBase64) {
+    return res.status(400).json({ error: 'contentBase64 is required' });
+  }
+  try {
+    const societyRes = await pool.query('SELECT storage_bucket FROM society_societies WHERE id = $1', [req.user!.societyId]);
+    const bucket = societyRes.rows[0]?.storage_bucket || 'assets';
+    const ext = (fileExtension || 'jpg').replace(/[^a-zA-Z0-9]/g, '') || 'jpg';
+    const filename = `avatars/${req.user!.uid}.${ext}`;
+
+    const oldAvatarRes = await pool.query('SELECT avatar_url FROM society_users WHERE uid = $1', [req.user!.uid]);
+    const oldAvatarUrl = oldAvatarRes.rows[0]?.avatar_url;
+
+    const { url } = await uploadFileToStorage(bucket, filename, contentBase64, mimeType || 'image/jpeg');
+    await pool.query('UPDATE society_users SET avatar_url = $1 WHERE uid = $2', [url, req.user!.uid]);
+
+    // Best-effort — no-ops for auto-generated ui-avatars.com URLs (nothing of
+    // ours to delete), only removes a real previously-uploaded file.
+    if (oldAvatarUrl && oldAvatarUrl !== url) {
+      deleteStorageFile(oldAvatarUrl).catch((err) =>
+        console.warn('[Users] Failed to clean up previous avatar:', err)
+      );
+    }
+
+    res.json({ success: true, avatarUrl: url });
+  } catch (err: any) {
+    console.error('Error uploading avatar:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // --- Users ---
@@ -172,6 +230,89 @@ router.post('/api/users', async (req, res) => {
     console.error('Error creating/updating user in database:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Bulk import residents from a CSV parsed client-side into an array of rows.
+// Admin-only. Each row goes through the same Supabase Auth creation as a
+// single signup, but defaults to a shared temporary password ('Abcd@12345')
+// when a row doesn't specify one, and is auto-approved/auto-verified since
+// an admin is entering this data directly (no self-signup fraud risk, and
+// forcing hundreds of bulk-imported residents through individual email OTP
+// verification would defeat the purpose of bulk import). Processes every row
+// independently — a bad row is skipped/reported, not a batch failure.
+router.post('/api/users/bulk', requireAuth, requireRole('SuperAdmin', 'WingAdmin'), async (req, res) => {
+  const { residents } = req.body;
+  if (!Array.isArray(residents) || residents.length === 0) {
+    return res.status(400).json({ error: 'residents must be a non-empty array' });
+  }
+
+  // A bulk import targets one society at a time. Non-SuperAdmins are always
+  // scoped to their own society server-side, regardless of what's requested.
+  const requestedSocietyId = req.body.societyId;
+  const societyId = req.user!.role === 'SuperAdmin' && requestedSocietyId ? requestedSocietyId : req.user!.societyId;
+  const societyName = req.user!.role === 'SuperAdmin' && requestedSocietyId ? req.body.societyName : req.user!.societyName;
+
+  const DEFAULT_PASSWORD = 'Abcd@12345';
+  const supabase = getSupabaseAdminClient();
+  const results: { row: number; email: string; status: 'imported' | 'skipped' | 'failed'; reason?: string }[] = [];
+
+  for (let i = 0; i < residents.length; i++) {
+    const row = residents[i] || {};
+    const rowNum = i + 1;
+    const name = (row.name || '').trim();
+    const email = (row.email || '').trim();
+    const phone = (row.phone || '').trim() || null;
+    const wing = (row.wing || '').trim() || null;
+    const apartmentNo = (row.apartmentNo || '').trim() || null;
+    const password = (row.password || '').trim() || DEFAULT_PASSWORD;
+
+    if (!name || !email) {
+      results.push({ row: rowNum, email: email || '(missing)', status: 'failed', reason: 'name and email are required' });
+      continue;
+    }
+
+    try {
+      const existing = await pool.query(
+        'SELECT uid FROM society_users WHERE LOWER(TRIM(email)) = LOWER(TRIM($1)) AND society_id = $2',
+        [email, societyId]
+      );
+      if (existing.rows.length > 0) {
+        results.push({ row: rowNum, email, status: 'skipped', reason: 'Already registered in this society' });
+        continue;
+      }
+
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true
+      });
+      if (authError || !authData?.user) {
+        results.push({ row: rowNum, email, status: 'failed', reason: authError?.message || 'Could not create account credentials' });
+        continue;
+      }
+
+      const uid = `res-${crypto.randomBytes(6).toString('hex')}`;
+      await pool.query(
+        `INSERT INTO society_users (uid, name, email, phone, role, wing, apartment_no, auth_uid, society_id, society_name, admin_approved, email_verified)
+         VALUES ($1, $2, $3, $4, 'Resident', $5, $6, $7, $8, $9, TRUE, TRUE)`,
+        [uid, name, email, phone, wing, apartmentNo, authData.user.id, societyId, societyName]
+      );
+
+      results.push({ row: rowNum, email, status: 'imported' });
+    } catch (err: any) {
+      results.push({ row: rowNum, email, status: 'failed', reason: err.message });
+    }
+  }
+
+  res.json({
+    success: true,
+    total: residents.length,
+    imported: results.filter((r) => r.status === 'imported').length,
+    skipped: results.filter((r) => r.status === 'skipped').length,
+    failed: results.filter((r) => r.status === 'failed').length,
+    defaultPasswordUsed: DEFAULT_PASSWORD,
+    results
+  });
 });
 
 router.post('/api/users/verify-email', async (req, res) => {

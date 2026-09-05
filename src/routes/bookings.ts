@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { parseSlotRange, parseTimeStringToMinutes, doTimeRangesOverlap } from '../utils/timeSlots.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -157,6 +157,69 @@ router.post('/api/bookings', async (req, res) => {
     res.json({ success: true });
   } catch (err: any) {
     console.error('Error creating booking:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin/facility-manager action: verify that a resident's self-declared,
+// off-app payment (QR/UPI/bank transfer) actually came through, then confirm
+// the booking. Mirrors the "Pending Resident Approval" -> approve pattern.
+router.put('/api/bookings/:id/confirm-payment', requireAuth, requireRole('SuperAdmin', 'WingAdmin'), async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      `UPDATE society_bookings
+       SET status = 'Confirmed', is_paid = TRUE, payment_ref = COALESCE(payment_ref, $2)
+       WHERE id = $1
+       RETURNING *`,
+      [id, `TXN-CONF-${Date.now().toString().slice(-6)}`]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    const row = result.rows[0];
+
+    // Record the verified payment as society income, same as a booking that
+    // was already paid at creation time (see POST /api/bookings above).
+    if (row.amount_paid && row.amount_paid > 0) {
+      const txId = 'tx-book-' + Date.now();
+      await pool.query(
+        `INSERT INTO society_transactions (id, title, amount, type, category, date, society_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          txId,
+          `Amenity Booking: ${row.facility_name || 'Facility'} (${row.resident_name})`,
+          row.amount_paid,
+          'Income',
+          'Facility',
+          row.date || new Date().toISOString().split('T')[0],
+          row.society_id
+        ]
+      );
+    }
+
+    res.json({
+      success: true,
+      booking: {
+        id: row.id,
+        facilityId: row.facility_id,
+        facilityName: row.facility_name || 'Amenity',
+        residentName: row.resident_name,
+        residentId: row.resident_id,
+        wing: row.wing || '',
+        apartmentNo: row.apartment_no || '',
+        date: row.date,
+        timeSlot: row.time_slot,
+        status: row.status,
+        qrCode: row.qr_code,
+        isPaid: Boolean(row.is_paid),
+        amountPaid: row.amount_paid || 0,
+        paymentRef: row.payment_ref || '',
+        societyId: row.society_id
+      }
+    });
+  } catch (err: any) {
+    console.error('Error confirming booking payment:', err);
     res.status(500).json({ error: err.message });
   }
 });
