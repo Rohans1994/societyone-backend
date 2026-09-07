@@ -272,6 +272,12 @@ export async function initializeDatabase() {
     await client.query(`ALTER TABLE society_notices ADD COLUMN IF NOT EXISTS category TEXT;`);
     await client.query(`ALTER TABLE society_notices ADD COLUMN IF NOT EXISTS priority TEXT;`);
     await client.query(`ALTER TABLE society_notices ADD COLUMN IF NOT EXISTS created_by_name TEXT;`);
+    // Optional image/PDF attachment, and optional single-resident targeting
+    // (NULL target_uid = broadcast/common notice visible to everyone, as
+    // before; a set target_uid restricts visibility to just that resident).
+    await client.query(`ALTER TABLE society_notices ADD COLUMN IF NOT EXISTS attachment_url TEXT;`);
+    await client.query(`ALTER TABLE society_notices ADD COLUMN IF NOT EXISTS target_uid TEXT;`);
+    await client.query(`ALTER TABLE society_notices ADD COLUMN IF NOT EXISTS target_user_name TEXT;`);
 
     // Fishbowl messages
     await client.query(`
