@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
+import { sendPushToSociety } from '../services/pushNotifications.js';
 
 const router = Router();
 
@@ -34,20 +35,30 @@ router.get('/api/events', async (req, res) => {
   }
 });
 
-router.post('/api/events', async (req, res) => {
+router.post('/api/events', requireAuth, requireRole('SuperAdmin', 'WingAdmin'), async (req, res) => {
   const { id, title, date, time, location, description, organizer, societyId } = req.body;
   try {
     await pool.query(
       'INSERT INTO society_events (id, title, date, time, location, description, organizer, society_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
       [id, title, date, time, location, description, organizer, societyId || 'soc-mtb32pfk']
     );
+
+    // Events have no per-resident targeting (unlike notices), so this is
+    // always a broadcast push to the whole society. Best-effort, never
+    // blocks or fails the response below.
+    sendPushToSociety(societyId || 'soc-mtb32pfk', {
+      title: `New Event: ${title || 'Event'}`,
+      body: description || `${date || ''} ${time || ''}`.trim(),
+      data: { type: 'event', eventId: id || '' }
+    }).catch((err) => console.warn('[Events] Push send failed:', err));
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.put('/api/events/:id', async (req, res) => {
+router.put('/api/events/:id', requireAuth, requireRole('SuperAdmin', 'WingAdmin'), async (req, res) => {
   const { id } = req.params;
   const { title, date, time, location, description, organizer, societyId } = req.body;
   try {
@@ -61,7 +72,7 @@ router.put('/api/events/:id', async (req, res) => {
   }
 });
 
-router.delete('/api/events/:id', async (req, res) => {
+router.delete('/api/events/:id', requireAuth, requireRole('SuperAdmin', 'WingAdmin'), async (req, res) => {
   const { id } = req.params;
   try {
     await pool.query('DELETE FROM society_events WHERE id = $1', [id]);

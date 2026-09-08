@@ -540,6 +540,22 @@ export async function initializeDatabase() {
       console.warn('Could not bootstrap storage buckets (possibly storage schema not present):', storageErr);
     }
 
+    // Device tokens for push notifications (Firebase Cloud Messaging).
+    // One resident can have multiple devices (e.g. phone + a second phone),
+    // so this is a separate table keyed by uid rather than a column on
+    // society_users. token is UNIQUE so re-registering the same device (app
+    // reinstall, re-login) updates the existing row instead of duplicating it.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS society_device_tokens (
+        id TEXT PRIMARY KEY,
+        uid TEXT NOT NULL,
+        token TEXT NOT NULL UNIQUE,
+        platform TEXT DEFAULT 'android',
+        society_id TEXT,
+        created_at TEXT NOT NULL
+      );
+    `);
+
     // Seed database
     await seedDatabase(client);
 

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { deleteStorageFile } from '../services/storageCleanup.js';
+import { sendPushToUser, sendPushToSociety } from '../services/pushNotifications.js';
 
 const router = Router();
 
@@ -76,6 +77,17 @@ router.post('/api/notices', requireAuth, requireRole('SuperAdmin', 'WingAdmin'),
         targetUserName || null
       ]
     );
+
+    // Push notification is best-effort and fire-and-forget — never blocks or
+    // fails the response below. A targeted notice pushes to just that one
+    // resident's device(s); a broadcast notice pushes to the whole society.
+    const pushPayload = { title: title || 'New Notice', body: description || '', data: { type: 'notice', noticeId: id || '' } };
+    if (targetUid) {
+      sendPushToUser(targetUid, pushPayload).catch((err) => console.warn('[Notices] Push send failed:', err));
+    } else {
+      sendPushToSociety(societyId || 'soc-mtb32pfk', pushPayload).catch((err) => console.warn('[Notices] Push send failed:', err));
+    }
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
