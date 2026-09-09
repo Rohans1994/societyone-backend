@@ -30,6 +30,7 @@ export function initializeRealtime(httpServer: HttpServer, allowedOrigins: strin
     const token = socket.handshake.auth?.token as string | undefined;
     const result = await loadUserFromToken(token);
     if (!result.user) {
+      console.warn(`[Realtime] Connection rejected (${result.reason || 'no user'}) from socket ${socket.id}`);
       return next(new Error('Unauthorized'));
     }
     socket.data.user = result.user;
@@ -39,9 +40,16 @@ export function initializeRealtime(httpServer: HttpServer, allowedOrigins: strin
   io.on('connection', (socket) => {
     const user = socket.data.user;
     socket.join(`user:${user.uid}`);
+    console.log(`[Realtime] Connected: ${user.uid} (${user.role}), socket ${socket.id}, joined user:${user.uid}`);
     if ((user.role === 'SuperAdmin' || user.role === 'WingAdmin') && user.societyId) {
       socket.join(`society-admins:${user.societyId}`);
+      console.log(`[Realtime]   also joined society-admins:${user.societyId}`);
+    } else if (user.role === 'SuperAdmin' || user.role === 'WingAdmin') {
+      console.warn(`[Realtime]   admin ${user.uid} has no societyId — did NOT join a society-admins room`);
     }
+    socket.on('disconnect', (reason) => {
+      console.log(`[Realtime] Disconnected: ${user.uid}, socket ${socket.id}, reason: ${reason}`);
+    });
   });
 
   console.log('[Realtime] Socket.io server initialized.');
@@ -50,10 +58,16 @@ export function initializeRealtime(httpServer: HttpServer, allowedOrigins: strin
 
 /** Emits an event directly to one specific user's connected session(s), if any. */
 export function emitToUser(uid: string, event: string, payload: unknown): void {
-  io?.to(`user:${uid}`).emit(event, payload);
+  const room = `user:${uid}`;
+  const size = io?.sockets.adapter.rooms.get(room)?.size || 0;
+  console.log(`[Realtime] emitToUser: ${event} -> ${room} (${size} socket(s) currently in room)`);
+  io?.to(room).emit(event, payload);
 }
 
 /** Emits an event to every admin/guard session currently connected for a society. */
 export function emitToSocietyAdmins(societyId: string, event: string, payload: unknown): void {
-  io?.to(`society-admins:${societyId}`).emit(event, payload);
+  const room = `society-admins:${societyId}`;
+  const size = io?.sockets.adapter.rooms.get(room)?.size || 0;
+  console.log(`[Realtime] emitToSocietyAdmins: ${event} -> ${room} (${size} socket(s) currently in room)`);
+  io?.to(room).emit(event, payload);
 }
