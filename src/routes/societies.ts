@@ -1,10 +1,34 @@
 import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { ensureSocietyBucket } from '../services/supabaseAdmin.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
+function mapFullSociety(row: any) {
+  return {
+    id: row.id,
+    name: row.name,
+    address: row.address,
+    city: row.city,
+    pincode: row.pincode,
+    wings: typeof row.wings === 'string' ? JSON.parse(row.wings) : (row.wings || []),
+    adminEmail: row.admin_email,
+    adminName: row.admin_name,
+    adminPhone: row.admin_phone || row.phone || '',
+    phone: row.phone || row.admin_phone || '',
+    createdAt: row.created_at,
+    storageBucket: row.storage_bucket
+  };
+}
+
 // --- Societies ---
+// Public (no auth) — deliberately returns only what the pre-login
+// screens actually need (the Auth screen's society picker: search by
+// name/address/city/pincode, and the registration form's wing list).
+// Admin contact info and storageBucket are never read by any pre-login UI,
+// so they're not sent to anonymous visitors — see GET /api/societies/me for
+// the full record, used once actually authenticated.
 router.get('/api/societies', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM society_societies ORDER BY created_at DESC, name ASC');
@@ -14,16 +38,28 @@ router.get('/api/societies', async (req, res) => {
       address: row.address,
       city: row.city,
       pincode: row.pincode,
-      wings: typeof row.wings === 'string' ? JSON.parse(row.wings) : (row.wings || []),
-      adminEmail: row.admin_email,
-      adminName: row.admin_name,
-      adminPhone: row.admin_phone || row.phone || '',
-      phone: row.phone || row.admin_phone || '',
-      createdAt: row.created_at,
-      storageBucket: row.storage_bucket
+      wings: typeof row.wings === 'string' ? JSON.parse(row.wings) : (row.wings || [])
     })));
   } catch (err: any) {
     console.error('Error fetching societies:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Authenticated — the full record (incl. storageBucket, used for uploads
+// throughout the admin UI) for the caller's own society only.
+router.get('/api/societies/me', requireAuth, async (req, res) => {
+  if (!req.user!.societyId) {
+    return res.json(null);
+  }
+  try {
+    const result = await pool.query('SELECT * FROM society_societies WHERE id = $1', [req.user!.societyId]);
+    if (result.rows.length === 0) {
+      return res.json(null);
+    }
+    res.json(mapFullSociety(result.rows[0]));
+  } catch (err: any) {
+    console.error('Error fetching own society:', err);
     res.status(500).json({ error: err.message });
   }
 });

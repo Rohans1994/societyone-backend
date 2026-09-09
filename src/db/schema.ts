@@ -556,6 +556,33 @@ export async function initializeDatabase() {
       );
     `);
 
+    // Gate / visitor management: a guard (admin login, for now) logs a
+    // visitor at the main gate against one specific resident (this society
+    // currently allows only one registered owner per flat, so targeting a
+    // resident directly is equivalent to targeting "this flat"). The
+    // resident approves/denies in real time (see services/realtime.ts +
+    // services/pushNotifications.ts). No auto-expiry — an unanswered
+    // request just stays 'Pending' and the guard follows up by phone.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS society_visitor_requests (
+        id TEXT PRIMARY KEY,
+        society_id TEXT NOT NULL,
+        resident_uid TEXT NOT NULL,
+        resident_name TEXT,
+        wing TEXT,
+        apartment_no TEXT,
+        visitor_name TEXT NOT NULL,
+        visitor_phone TEXT,
+        purpose TEXT,
+        photo_url TEXT,
+        status TEXT NOT NULL DEFAULT 'Pending',
+        created_by TEXT,
+        created_by_name TEXT,
+        created_at TEXT NOT NULL,
+        responded_at TEXT
+      );
+    `);
+
     // Seed database
     await seedDatabase(client);
 

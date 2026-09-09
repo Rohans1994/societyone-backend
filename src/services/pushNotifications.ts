@@ -48,6 +48,16 @@ export interface PushNotificationPayload {
   // Arbitrary extra data delivered alongside the notification (e.g. notice
   // id, so tapping the notification can deep-link straight to it).
   data?: Record<string, string>;
+  // When true, omits the top-level FCM "notification" field so Android
+  // does NOT auto-display a plain system-tray notification and skips
+  // calling onMessageReceived while backgrounded/killed (see
+  // https://firebase.google.com/docs/cloud-messaging/android/receive).
+  // Used only for visitor-request alerts, whose custom Android service
+  // (VisitorMessagingService) builds its own notification WITH native
+  // Approve/Deny action buttons — title/body are carried in `data` instead
+  // so that native code has something to read. Every other push (notices,
+  // events) is left as a normal notification+data message, unchanged.
+  dataOnly?: boolean;
 }
 
 async function sendToTokens(tokens: string[], payload: PushNotificationPayload): Promise<void> {
@@ -61,10 +71,16 @@ async function sendToTokens(tokens: string[], payload: PushNotificationPayload):
   console.log(`[Push] Sending "${payload.title}" to ${tokens.length} device(s)...`);
 
   try {
+    const data = { ...(payload.data || {}) };
+    if (payload.dataOnly) {
+      data.title = payload.title;
+      data.body = payload.body;
+    }
+
     const response = await getMessaging(app).sendEachForMulticast({
       tokens,
-      notification: { title: payload.title, body: payload.body },
-      data: payload.data || {}
+      ...(payload.dataOnly ? {} : { notification: { title: payload.title, body: payload.body } }),
+      data
     });
 
     console.log(`[Push] FCM response: ${response.successCount} succeeded, ${response.failureCount} failed.`);

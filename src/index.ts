@@ -1,9 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { createServer } from 'http';
 
 import { pool } from './db/pool.js';
 import { initializeDatabase } from './db/schema.js';
+import { initializeRealtime } from './services/realtime.js';
 
 import societiesRouter from './routes/societies.js';
 import usersRouter from './routes/users.js';
@@ -26,6 +28,7 @@ import configRouter from './routes/config.js';
 import storageRouter from './routes/storage.js';
 import adminMigrationRouter from './routes/adminMigration.js';
 import deviceTokensRouter from './routes/deviceTokens.js';
+import visitorRequestsRouter from './routes/visitorRequests.js';
 
 dotenv.config();
 
@@ -37,6 +40,12 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map((o) => o.trim())
   .filter(Boolean);
+
+// Created explicitly (rather than relying on app.listen()'s implicit one) so
+// Socket.io can attach to the same underlying HTTP server — both Express
+// routes and WebSocket upgrade requests are served from this one server/port.
+const httpServer = createServer(app);
+initializeRealtime(httpServer, allowedOrigins);
 
 app.use(
   cors({
@@ -74,6 +83,7 @@ app.use(configRouter);
 app.use(storageRouter);
 app.use(adminMigrationRouter);
 app.use(deviceTokensRouter);
+app.use(visitorRequestsRouter);
 
 // Initialize DB and bootstrap tables, then start listening.
 initializeDatabase()
@@ -84,7 +94,7 @@ initializeDatabase()
     console.error('Critical database startup/bootstrap failure:', err);
   })
   .finally(() => {
-    app.listen(PORT, '0.0.0.0', () => {
+    httpServer.listen(PORT, '0.0.0.0', () => {
       console.log(`SocietyOne API server running on http://0.0.0.0:${PORT}`);
     });
   });
