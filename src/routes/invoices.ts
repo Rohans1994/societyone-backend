@@ -68,6 +68,9 @@ router.get('/api/invoices', async (req, res) => {
 
 router.post('/api/invoices', async (req, res) => {
   const { id, residentName, residentId, wing, apartmentNo, amount, dueDate, status, type, frequency, period, breakdown, description, societyId } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
     const invId = id || `INV-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     await pool.query(
@@ -101,7 +104,7 @@ router.post('/api/invoices', async (req, res) => {
         period || null,
         breakdown ? JSON.stringify(breakdown) : null,
         description || null,
-        societyId || 'soc-mtb32pfk'
+        societyId
       ]
     );
     res.json({ success: true, id: invId });
@@ -173,6 +176,14 @@ router.post('/api/invoices/:id/pay', async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
     const inv = invRes.rows[0];
+    if (!inv.society_id) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This invoice has no associated societyId — cannot process payment.' });
+    }
+    // society_invoices only stores society_id, not a denormalized name —
+    // look up the real name for the receipt rather than hardcoding one.
+    const societyRes = await client.query('SELECT name FROM society_societies WHERE id = $1', [inv.society_id]);
+    const societyName = societyRes.rows[0]?.name || null;
     const amount = amountPaid ? parseFloat(amountPaid) : parseFloat(inv.amount);
     const payDate = new Date().toISOString().split('T')[0];
     const payTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -199,8 +210,8 @@ router.post('/api/invoices/:id/pay', async (req, res) => {
         txRef,
         inv.period || 'General Maintenance',
         inv.frequency || 'Monthly',
-        inv.society_id || 'soc-mtb32pfk',
-        'Arkade Earth',
+        inv.society_id,
+        societyName,
         'Success',
         inv.breakdown ? JSON.stringify(inv.breakdown) : null,
         new Date().toISOString()
@@ -228,7 +239,7 @@ router.post('/api/invoices/:id/pay', async (req, res) => {
         'Income',
         'Maintenance',
         payDate,
-        inv.society_id || 'soc-mtb32pfk'
+        inv.society_id
       ]
     );
 

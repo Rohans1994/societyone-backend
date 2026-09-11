@@ -50,6 +50,9 @@ router.get('/api/facility-blocks', async (req, res) => {
 
 router.post('/api/facility-blocks', async (req, res) => {
   const { id, facilityId, facilityName, date, startTime, endTime, reason, blockedBy, societyId } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
     const blockId = id || 'blk-' + Date.now();
     await pool.query(
@@ -73,7 +76,7 @@ router.post('/api/facility-blocks', async (req, res) => {
         endTime || '23:59',
         reason || 'Scheduled Maintenance',
         blockedBy || 'Super Admin',
-        societyId || 'soc-mtb32pfk',
+        societyId,
         new Date().toISOString()
       ]
     );

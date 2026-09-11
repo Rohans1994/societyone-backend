@@ -11,6 +11,8 @@ function mapFullSociety(row: any) {
     name: row.name,
     address: row.address,
     city: row.city,
+    state: row.state,
+    country: row.country,
     pincode: row.pincode,
     wings: typeof row.wings === 'string' ? JSON.parse(row.wings) : (row.wings || []),
     adminEmail: row.admin_email,
@@ -37,6 +39,7 @@ router.get('/api/societies', async (req, res) => {
       name: row.name,
       address: row.address,
       city: row.city,
+      state: row.state,
       pincode: row.pincode,
       wings: typeof row.wings === 'string' ? JSON.parse(row.wings) : (row.wings || [])
     })));
@@ -65,7 +68,7 @@ router.get('/api/societies/me', requireAuth, async (req, res) => {
 });
 
 router.post('/api/societies', async (req, res) => {
-  const { id, name, address, city, pincode, wings, adminEmail, adminName, adminPhone, phone, createdAt } = req.body;
+  const { id, name, address, city, state, country, pincode, wings, adminEmail, adminName, adminPhone, phone, createdAt } = req.body;
   const contactPhone = adminPhone || phone || '';
 
   // Create this society's dedicated Storage bucket (tendor/amc/assets will
@@ -82,12 +85,14 @@ router.post('/api/societies', async (req, res) => {
 
   try {
     await pool.query(
-      `INSERT INTO society_societies (id, name, address, city, pincode, wings, admin_email, admin_name, admin_phone, phone, created_at, storage_bucket) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+      `INSERT INTO society_societies (id, name, address, city, state, country, pincode, wings, admin_email, admin_name, admin_phone, phone, created_at, storage_bucket) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          address = EXCLUDED.address,
          city = EXCLUDED.city,
+         state = EXCLUDED.state,
+         country = EXCLUDED.country,
          pincode = EXCLUDED.pincode,
          wings = EXCLUDED.wings,
          admin_email = EXCLUDED.admin_email,
@@ -96,7 +101,7 @@ router.post('/api/societies', async (req, res) => {
          phone = EXCLUDED.phone,
          created_at = EXCLUDED.created_at,
          storage_bucket = COALESCE(society_societies.storage_bucket, EXCLUDED.storage_bucket)`,
-      [id, name, address, city, pincode, JSON.stringify(wings || []), adminEmail, adminName, contactPhone, contactPhone, createdAt, storageBucket]
+      [id, name, address, city, state || null, country || 'India', pincode, JSON.stringify(wings || []), adminEmail, adminName, contactPhone, contactPhone, createdAt, storageBucket]
     );
     res.json({ success: true, storageBucket });
   } catch (err: any) {

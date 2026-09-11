@@ -64,6 +64,9 @@ router.get('/api/receipts', async (req, res) => {
 
 router.post('/api/receipts', async (req, res) => {
   const { id, invoiceId, residentId, residentName, wing, apartmentNo, amount, paymentDate, paymentTime, paymentMethod, transactionRef, period, frequency, societyId, societyName, status, breakdown, pdfUrl } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
     const receiptId = id || `REC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
     await pool.query(
@@ -91,8 +94,8 @@ router.post('/api/receipts', async (req, res) => {
         transactionRef || `TXREF-${Date.now()}`,
         period || null,
         frequency || null,
-        societyId || 'soc-mtb32pfk',
-        societyName || 'Arkade Earth',
+        societyId,
+        societyName || null,
         status || 'Success',
         breakdown ? JSON.stringify(breakdown) : null,
         pdfUrl || null,

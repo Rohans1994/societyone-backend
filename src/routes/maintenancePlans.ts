@@ -41,11 +41,14 @@ router.get('/api/maintenance-plans', async (req, res) => {
 
 router.post('/api/maintenance-plans', async (req, res) => {
   const { id, title, frequency, periodLabel, startDate, endDate, dueDate, rateAmount, breakdown, wing, notes, societyId } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const planId = id || `MNT-PLAN-${Date.now()}`;
-    const socId = societyId || 'soc-mtb32pfk';
+    const socId = societyId;
 
     // 1. Insert maintenance plan
     await client.query(

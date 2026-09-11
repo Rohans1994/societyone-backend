@@ -35,10 +35,13 @@ router.get('/api/transactions', async (req, res) => {
 
 router.post('/api/transactions', async (req, res) => {
   const { id, title, amount, type, category, date, societyId } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
     await pool.query(
       'INSERT INTO society_transactions (id, title, amount, type, category, date, society_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [id, title, amount, type, category, date, societyId || 'soc-mtb32pfk']
+      [id, title, amount, type, category, date, societyId]
     );
     res.json({ success: true });
   } catch (err: any) {

@@ -57,6 +57,9 @@ router.get('/api/notices', async (req, res) => {
 
 router.post('/api/notices', requireAuth, requireRole('SuperAdmin', 'WingAdmin'), async (req, res) => {
   const { id, title, description, category, date, priority, createdBy, createdByName, societyId, attachmentUrl, targetUid, targetUserName } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
     await pool.query(
       `INSERT INTO society_notices
@@ -71,7 +74,7 @@ router.post('/api/notices', requireAuth, requireRole('SuperAdmin', 'WingAdmin'),
         priority || 'Normal',
         createdBy || null,
         createdByName || 'Admin',
-        societyId || 'soc-mtb32pfk',
+        societyId,
         attachmentUrl || null,
         targetUid || null,
         targetUserName || null
@@ -85,7 +88,7 @@ router.post('/api/notices', requireAuth, requireRole('SuperAdmin', 'WingAdmin'),
     if (targetUid) {
       sendPushToUser(targetUid, pushPayload).catch((err) => console.warn('[Notices] Push send failed:', err));
     } else {
-      sendPushToSociety(societyId || 'soc-mtb32pfk', pushPayload).catch((err) => console.warn('[Notices] Push send failed:', err));
+      sendPushToSociety(societyId, pushPayload).catch((err) => console.warn('[Notices] Push send failed:', err));
     }
 
     res.json({ success: true });

@@ -43,10 +43,13 @@ router.get('/api/tickets', async (req, res) => {
 
 router.post('/api/tickets', async (req, res) => {
   const { id, title, description, category, priority, status, assignedTo, createdBy, createdByName, wing, apartmentNo, dateCreated, attachments, progressUpdate, societyId } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
     await pool.query(
       'INSERT INTO society_tickets (id, title, description, category, priority, status, assigned_to, created_by, created_by_name, wing, apartment_no, date_created, attachments, progress_update, society_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)',
-      [id, title, description, category, priority, status, assignedTo, createdBy, createdByName, wing, apartmentNo, dateCreated, JSON.stringify(attachments || []), progressUpdate, societyId || 'soc-mtb32pfk']
+      [id, title, description, category, priority, status, assignedTo, createdBy, createdByName, wing, apartmentNo, dateCreated, JSON.stringify(attachments || []), progressUpdate, societyId]
     );
     res.json({ success: true });
   } catch (err: any) {

@@ -38,10 +38,13 @@ router.get('/api/fishbowl', async (req, res) => {
 
 router.post('/api/fishbowl', async (req, res) => {
   const { id, text, timestamp, userId, userName, wing, apartmentNo, replyToId, societyId } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
     await pool.query(
       'INSERT INTO society_fishbowl (id, text, timestamp, user_id, user_name, wing, apartment_no, reply_to_id, society_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-      [id, text, timestamp, userId, userName, wing, apartmentNo, replyToId, societyId || 'soc-mtb32pfk']
+      [id, text, timestamp, userId, userName, wing, apartmentNo, replyToId, societyId]
     );
     res.json({ success: true });
   } catch (err: any) {

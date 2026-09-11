@@ -48,16 +48,18 @@ router.get('/api/tendors', async (req, res) => {
 
 router.post('/api/tendors', async (req, res) => {
   const { id, name, description, quotations, societyId } = req.body;
-  const targetSocId = societyId || 'soc-mtb32pfk';
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('INSERT INTO society_tendors (id, name, description, society_id) VALUES ($1, $2, $3, $4)', [id, name, description, targetSocId]);
+    await client.query('INSERT INTO society_tendors (id, name, description, society_id) VALUES ($1, $2, $3, $4)', [id, name, description, societyId]);
     if (quotations && Array.isArray(quotations)) {
       for (const q of quotations) {
         await client.query(
           'INSERT INTO society_quotations (tendor_id, vendor_id, vendor_name, quotation, pdf_url, pdf_name, society_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [id, q.vendorId, q.vendorName, q.quotation, q.pdfUrl, q.pdfName, targetSocId]
+          [id, q.vendorId, q.vendorName, q.quotation, q.pdfUrl, q.pdfName, societyId]
         );
       }
     }
@@ -77,7 +79,18 @@ router.put('/api/tendors/:id', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('UPDATE society_tendors SET name = $1, description = $2, society_id = COALESCE($3, society_id) WHERE id = $4', [name, description, societyId || null, id]);
+    const updated = await client.query(
+      'UPDATE society_tendors SET name = $1, description = $2, society_id = COALESCE($3, society_id) WHERE id = $4 RETURNING society_id',
+      [name, description, societyId || null, id]
+    );
+    // The tendor's own (possibly pre-existing) society_id is the source of
+    // truth for its quotations — not a hardcoded default — since this
+    // request doesn't always resend societyId for an update.
+    const tendorSocietyId = updated.rows[0]?.society_id;
+    if (!tendorSocietyId) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'societyId is required.' });
+    }
 
     // This always deletes and re-inserts every quotation row, even ones that
     // are otherwise unchanged (their pdf_url is simply carried over as-is by
@@ -98,7 +111,7 @@ router.put('/api/tendors/:id', async (req, res) => {
       for (const q of quotations) {
         await client.query(
           'INSERT INTO society_quotations (tendor_id, vendor_id, vendor_name, quotation, pdf_url, pdf_name, society_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [id, q.vendorId, q.vendorName, q.quotation, q.pdfUrl, q.pdfName, q.societyId || societyId || 'soc-mtb32pfk']
+          [id, q.vendorId, q.vendorName, q.quotation, q.pdfUrl, q.pdfName, q.societyId || tendorSocietyId]
         );
       }
     }

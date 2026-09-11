@@ -36,10 +36,13 @@ router.get('/api/vendors', async (req, res) => {
 
 router.post('/api/vendors', async (req, res) => {
   const { id, name, serviceCategory, contactPerson, phone, email, status, societyId } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
     await pool.query(
       'INSERT INTO society_vendors (id, name, service_category, contact_person, phone, email, status, society_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [id, name, serviceCategory, contactPerson, phone, email, status || 'Active', societyId || 'soc-mtb32pfk']
+      [id, name, serviceCategory, contactPerson, phone, email, status || 'Active', societyId]
     );
     res.json({ success: true });
   } catch (err: any) {
@@ -53,7 +56,10 @@ router.post('/api/vendors/bulk', async (req, res) => {
   if (!Array.isArray(vendors) || vendors.length === 0) {
     return res.status(400).json({ error: 'vendors must be a non-empty array' });
   }
-  const societyId = bodySocietyId || req.user?.societyId || 'soc-mtb32pfk';
+  const societyId = bodySocietyId || req.user?.societyId;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
 
   const results: { row: number; name: string; status: 'imported' | 'failed'; reason?: string }[] = [];
   for (let i = 0; i < vendors.length; i++) {

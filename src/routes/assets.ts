@@ -41,10 +41,13 @@ router.get('/api/assets', async (req, res) => {
 
 router.post('/api/assets', async (req, res) => {
   const { id, name, category, location, purchaseDate, modelNo, status, imageUrl, description, hasWarranty, warrantyPdfUrl, societyId } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
     await pool.query(
       'INSERT INTO society_assets (id, name, category, location, purchase_date, model_no, status, image_url, description, has_warranty, warranty_pdf_url, society_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
-      [id, name, category, location, purchaseDate, modelNo, status, imageUrl, description, hasWarranty || false, warrantyPdfUrl, societyId || 'soc-mtb32pfk']
+      [id, name, category, location, purchaseDate, modelNo, status, imageUrl, description, hasWarranty || false, warrantyPdfUrl, societyId]
     );
     res.json({ success: true });
   } catch (err: any) {
@@ -60,7 +63,10 @@ router.post('/api/assets/bulk', async (req, res) => {
   if (!Array.isArray(assets) || assets.length === 0) {
     return res.status(400).json({ error: 'assets must be a non-empty array' });
   }
-  const societyId = bodySocietyId || req.user?.societyId || 'soc-mtb32pfk';
+  const societyId = bodySocietyId || req.user?.societyId;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
 
   const results: { row: number; name: string; status: 'imported' | 'failed'; reason?: string }[] = [];
   for (let i = 0; i < assets.length; i++) {

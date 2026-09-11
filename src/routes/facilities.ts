@@ -59,6 +59,9 @@ router.get('/api/facilities', async (req, res) => {
 
 router.post('/api/facilities', async (req, res) => {
   const { id, name, description, capacity, slots, imageUrl, images, canBook, requiresPayment, price, paymentQrUrl, upiId, bankAccountNumber, bankIfscCode, rules, societyId } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
     const imagesJson = JSON.stringify(Array.isArray(images) && images.length > 0 ? images : (imageUrl ? [imageUrl] : []));
     const slotsJson = JSON.stringify(Array.isArray(slots) && slots.length > 0 ? slots.slice(0, 4) : [{ startTime: '06:00', endTime: '22:00' }]);
@@ -97,7 +100,7 @@ router.post('/api/facilities', async (req, res) => {
         bankAccountNumber || null,
         bankIfscCode || null,
         rules || '',
-        societyId || 'soc-mtb32pfk'
+        societyId
       ]
     );
     res.json({ success: true });

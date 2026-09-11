@@ -44,8 +44,11 @@ router.get('/api/bookings', async (req, res) => {
 
 router.post('/api/bookings', async (req, res) => {
   const { id, facilityId, facilityName, residentName, residentId, wing, apartmentNo, date, timeSlot, status, qrCode, isPaid, amountPaid, paymentRef, societyId } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
-    const socId = societyId || 'soc-mtb32pfk';
+    const socId = societyId;
 
     let userWing = wing || null;
     let userApt = apartmentNo || null;

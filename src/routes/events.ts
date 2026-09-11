@@ -37,16 +37,19 @@ router.get('/api/events', async (req, res) => {
 
 router.post('/api/events', requireAuth, requireRole('SuperAdmin', 'WingAdmin'), async (req, res) => {
   const { id, title, date, time, location, description, organizer, societyId } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
     await pool.query(
       'INSERT INTO society_events (id, title, date, time, location, description, organizer, society_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [id, title, date, time, location, description, organizer, societyId || 'soc-mtb32pfk']
+      [id, title, date, time, location, description, organizer, societyId]
     );
 
     // Events have no per-resident targeting (unlike notices), so this is
     // always a broadcast push to the whole society. Best-effort, never
     // blocks or fails the response below.
-    sendPushToSociety(societyId || 'soc-mtb32pfk', {
+    sendPushToSociety(societyId, {
       title: `New Event: ${title || 'Event'}`,
       body: description || `${date || ''} ${time || ''}`.trim(),
       data: { type: 'event', eventId: id || '' }

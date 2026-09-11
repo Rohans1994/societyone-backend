@@ -47,10 +47,13 @@ router.get('/api/amc', async (req, res) => {
 
 router.post('/api/amc', async (req, res) => {
   const { id, assetId, assetName, vendorName, startDate, expiryDate, status, cost, contractPdfUrl, contractPdfUrls, paymentDuration, paymentMethod, lastServiceDate, category, societyId } = req.body;
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
   try {
     await pool.query(
       'INSERT INTO society_amc (id, asset_id, asset_name, vendor_name, start_date, expiry_date, status, cost, contract_pdf_url, contract_pdf_urls, payment_duration, payment_method, last_service_date, category, society_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)',
-      [id, assetId, assetName, vendorName, startDate, expiryDate, status, cost, contractPdfUrl, contractPdfUrls ? JSON.stringify(contractPdfUrls) : null, paymentDuration, paymentMethod, lastServiceDate, category, societyId || 'soc-mtb32pfk']
+      [id, assetId, assetName, vendorName, startDate, expiryDate, status, cost, contractPdfUrl, contractPdfUrls ? JSON.stringify(contractPdfUrls) : null, paymentDuration, paymentMethod, lastServiceDate, category, societyId]
     );
     res.json({ success: true });
   } catch (err: any) {

@@ -76,6 +76,9 @@ router.post('/api/visitor-requests', requireRole('SuperAdmin', 'WingAdmin', 'Gua
   if (!residentUid || !visitorName) {
     return res.status(400).json({ error: 'residentUid and visitorName are required' });
   }
+  if (!societyId) {
+    return res.status(400).json({ error: 'societyId is required.' });
+  }
 
   try {
     const requestId = id || `visit-${Date.now()}`;
@@ -87,7 +90,7 @@ router.post('/api/visitor-requests', requireRole('SuperAdmin', 'WingAdmin', 'Gua
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Pending', $11, $12, $13)`,
       [
         requestId,
-        societyId || 'soc-mtb32pfk',
+        societyId,
         residentUid,
         residentName || null,
         wing || null,
