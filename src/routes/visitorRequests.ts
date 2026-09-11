@@ -41,7 +41,7 @@ function mapRow(row: any) {
 router.get('/api/visitor-requests', async (req, res) => {
   try {
     const { societyId, status } = req.query;
-    const isAdmin = req.user!.role === 'SuperAdmin' || req.user!.role === 'WingAdmin';
+    const isAdmin = req.user!.role === 'SuperAdmin' || req.user!.role === 'WingAdmin' || req.user!.role === 'Guard';
 
     let query = 'SELECT * FROM society_visitor_requests WHERE 1=1';
     const params: any[] = [];
@@ -67,7 +67,7 @@ router.get('/api/visitor-requests', async (req, res) => {
   }
 });
 
-router.post('/api/visitor-requests', requireRole('SuperAdmin', 'WingAdmin'), async (req, res) => {
+router.post('/api/visitor-requests', requireRole('SuperAdmin', 'WingAdmin', 'Guard'), async (req, res) => {
   const {
     id, societyId, residentUid, residentName, wing, apartmentNo,
     visitorName, visitorPhone, purpose, photoUrl
