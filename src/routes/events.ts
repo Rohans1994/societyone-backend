@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../db/pool.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { sendPushToSociety } from '../services/pushNotifications.js';
+import { sendEventEmailToSociety } from '../services/email.js';
 
 const router = Router();
 
@@ -36,7 +37,7 @@ router.get('/api/events', async (req, res) => {
 });
 
 router.post('/api/events', requireAuth, requireRole('SuperAdmin', 'WingAdmin'), async (req, res) => {
-  const { id, title, date, time, location, description, organizer, societyId } = req.body;
+  const { id, title, date, time, location, description, organizer, societyId, sendEmail } = req.body;
   if (!societyId) {
     return res.status(400).json({ error: 'societyId is required.' });
   }
@@ -54,6 +55,19 @@ router.post('/api/events', requireAuth, requireRole('SuperAdmin', 'WingAdmin'), 
       body: description || `${date || ''} ${time || ''}`.trim(),
       data: { type: 'event', eventId: id || '' }
     }).catch((err) => console.warn('[Events] Push send failed:', err));
+
+    // Email is opt-in per event (the "Send email" checkbox in Events.tsx) —
+    // same fire-and-forget, best-effort pattern as push.
+    if (sendEmail) {
+      sendEventEmailToSociety(societyId, {
+        title: title || 'Event',
+        date: date || '',
+        time: time || '',
+        location: location || '',
+        description: description || '',
+        organizer: organizer || 'Managing Committee'
+      }).catch((err) => console.warn('[Events] Email send failed:', err));
+    }
 
     res.json({ success: true });
   } catch (err: any) {

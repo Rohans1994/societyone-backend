@@ -3,6 +3,7 @@ import { pool } from '../db/pool.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { deleteStorageFile } from '../services/storageCleanup.js';
 import { sendPushToUser, sendPushToSociety } from '../services/pushNotifications.js';
+import { sendNoticeEmailToUser, sendNoticeEmailToSociety } from '../services/email.js';
 
 const router = Router();
 
@@ -56,7 +57,7 @@ router.get('/api/notices', async (req, res) => {
 });
 
 router.post('/api/notices', requireAuth, requireRole('SuperAdmin', 'WingAdmin'), async (req, res) => {
-  const { id, title, description, category, date, priority, createdBy, createdByName, societyId, attachmentUrl, targetUid, targetUserName } = req.body;
+  const { id, title, description, category, date, priority, createdBy, createdByName, societyId, attachmentUrl, targetUid, targetUserName, sendEmail } = req.body;
   if (!societyId) {
     return res.status(400).json({ error: 'societyId is required.' });
   }
@@ -89,6 +90,24 @@ router.post('/api/notices', requireAuth, requireRole('SuperAdmin', 'WingAdmin'),
       sendPushToUser(targetUid, pushPayload).catch((err) => console.warn('[Notices] Push send failed:', err));
     } else {
       sendPushToSociety(societyId, pushPayload).catch((err) => console.warn('[Notices] Push send failed:', err));
+    }
+
+    // Email is opt-in per notice (the "Send email" checkbox in
+    // NoticeModal.tsx) — same fire-and-forget, best-effort pattern as push.
+    if (sendEmail) {
+      const emailContent = {
+        title: title || 'New Notice',
+        description: description || '',
+        category: category || 'General',
+        priority: priority || 'Normal',
+        date: date || new Date().toISOString().split('T')[0],
+        createdByName: createdByName || 'Admin'
+      };
+      if (targetUid) {
+        sendNoticeEmailToUser(targetUid, emailContent).catch((err) => console.warn('[Notices] Email send failed:', err));
+      } else {
+        sendNoticeEmailToSociety(societyId, emailContent).catch((err) => console.warn('[Notices] Email send failed:', err));
+      }
     }
 
     res.json({ success: true });
